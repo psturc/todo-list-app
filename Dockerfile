@@ -24,8 +24,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -r robot_requirements.txt
 
 RUN TIMESTAMP=$(cat /timestamp.txt) && \
-    sl-python config --appname TODO-LIST --branchname main --buildname "todo-list-$TIMESTAMP" --exclude "*venv*","tests/*" --workspacepath /app --token "$SEALIGHTS_AGENT_TOKEN"
-RUN sl-python scan  --buildsessionidfile buildSessionId.txt --scm git --token "$SEALIGHTS_AGENT_TOKEN"
+    sl-python config --appname TODO-LIST --branchname main --buildname "todo-list-$TIMESTAMP" --exclude "*venv*","tests/*" --workspacepath /app --tokenfile /app/token.txt
+RUN sl-python scan  --buildsessionidfile buildSessionId.txt --scm git --tokenfile /app/token.txt
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN git clone https://github.com/Sealights/sealights-integration-examples.git
