@@ -17,7 +17,6 @@ def add_todo():
         return jsonify({"error": "Task is required"}), 400
     todo = {"id": len(todo_list) + 1, "task": data["task"], "done": False}
     todo_list.append(todo)
-    print("hello world")
     return jsonify(todo), 201
 
 
