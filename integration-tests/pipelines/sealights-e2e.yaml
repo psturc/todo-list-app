@@ -1,0 +1,57 @@
+
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: test-sealights
+spec:
+  description: |
+    testing sealights with python application.
+  params:
+    - description: Snapshot of the application
+      name: SNAPSHOT
+      default: '{"components": [{"name":"test-app", "containerImage": "quay.io/example/repo:latest"}]}'
+      type: string
+    - name: oci-container-repo
+      default: 'quay.io/ascerra/sealights-python-app'
+      description: The ORAS container used to store all test artifacts.
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: common/tasks/test-metadata/0.1/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
+    - name: build-sealights-binaries
+      runAfter:
+        - test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/ascerra/tekton-integration-catalog.git
+          - name: revision
+            value: sealights
+          - name: pathInRepo
+            value: tasks/sealights/build-sealights-python-container/0.1/build-sealights-python-container.yaml
+      params:
+        - name: git-url
+          value: $(tasks.test-metadata.results.source-repo-url)
+        - name: git-branch
+          value: $(tasks.test-metadata.results.source-repo-branch)
+        - name: git-revision
+          value: $(tasks.test-metadata.results.git-revision)
+        - name: konflux-component
+          value: $(tasks.test-metadata.results.component-name)
+        - name: DOCKERFILE
+          value: ./Dockerfile.sealights
+        - name: IMAGE
+          value: $(tasks.test-metadata.results.container-image)
