@@ -1,11 +1,14 @@
-
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: test-sealights
 spec:
   description: |
-    testing sealights with python application.
+    This task clones a repository, builds a container image with Sealights binaries, 
+    and pushes the image to a container registry.
+  results:
+    - name: output-image
+      description: The resulting container image containing Sealights binaries.
   params:
     - description: Snapshot of the application
       name: SNAPSHOT
@@ -20,9 +23,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: https://github.com/flacatus/tekton-integration-catalog.git
           - name: revision
-            value: main
+            value: k_comp
           - name: pathInRepo
             value: common/tasks/test-metadata/0.1/test-metadata.yaml
       params:
@@ -30,7 +33,7 @@ spec:
           value: $(params.SNAPSHOT)
         - name: test-name
           value: $(context.pipelineRun.name)
-    - name: build-sealights-binaries
+    - name: pytests
       runAfter:
         - test-metadata
       taskRef:
@@ -41,7 +44,7 @@ spec:
           - name: revision
             value: sealights
           - name: pathInRepo
-            value: tasks/sealights/build-sealights-python-container/0.1/build-sealights-python-container.yaml
+            value: tasks/sealights/pytests/0.1/sealights-run-pytests.yaml
       params:
         - name: git-url
           value: $(tasks.test-metadata.results.source-repo-url)
@@ -51,7 +54,5 @@ spec:
           value: $(tasks.test-metadata.results.git-revision)
         - name: konflux-component
           value: $(tasks.test-metadata.results.component-name)
-        - name: DOCKERFILE
-          value: ./Dockerfile.sealights
         - name: IMAGE
           value: $(tasks.test-metadata.results.container-image)
