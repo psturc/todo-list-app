@@ -3,7 +3,8 @@ Library    RequestsLibrary
 Library    Collections
 
 *** Variables ***
-${BASE_URL}    http://localhost:5000
+# Removed static base URL, it will be passed from Tekton
+${BASE_URL}    ${BASE_URL}  # This will use the environment variable passed by Tekton
 
 *** Test Cases ***
 Should Add Todo And Mark It Done
