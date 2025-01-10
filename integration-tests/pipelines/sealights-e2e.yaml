@@ -159,7 +159,11 @@ spec:
               
               export IMAGE="$(tasks.test-metadata.results.container-image)"
 
-              git clone "$(tasks.test-metadata.results.git-url)" -b "$(tasks.test-metadata.results.source-repo-branch)"
+              if [ "$(tasks.test-metadata.results.source-repo-branch)" = "refs/heads/main" ]; then
+                git clone "$(tasks.test-metadata.results.git-url)"
+              else
+                git clone "$(tasks.test-metadata.results.git-url)" -b "$(tasks.test-metadata.results.source-repo-branch)"
+              fi
               cd todo-list-app
 
               # Replace placeholders in the deployment manifest with actual values
