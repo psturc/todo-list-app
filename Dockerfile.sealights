@@ -1,0 +1,31 @@
+# Base image
+FROM python:3.9-slim
+
+ARG BSID
+ARG AGENT_VERSION
+
+ENV BSID ${BSID}
+ENV AGENT_VERSION ${AGENT_VERSION}
+ENV SEALIGHTS_TOKEN_FILE /app/sl-token
+
+# Set the working directory
+WORKDIR /app
+
+# Copy application files
+COPY . /app
+
+RUN --mount=type=secret,id=sealights-credentials/token cp /run/secrets/sealights-credentials/token $SEALIGHTS_TOKEN_FILE
+RUN chown -R $(whoami) .
+RUN chmod +r ${SEALIGHTS_TOKEN_FILE}
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r robot_requirements.txt
+
+RUN pip install sealights-python-agent==${AGENT_VERSION}
+
+# Expose the application's port
+EXPOSE 5000
+
+# Run the application
+ENTRYPOINT ["/bin/sh", "-c", "sl-python run --tokenfile ${SEALIGHTS_TOKEN_FILE} --buildsessionid ${BSID} -- python app.py"]

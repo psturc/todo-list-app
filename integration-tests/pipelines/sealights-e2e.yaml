@@ -30,151 +30,74 @@ spec:
           value: $(params.SNAPSHOT)
         - name: test-name
           value: $(context.pipelineRun.name)
-    - name: provision-eaas-space
+    - name: sealights-get-refs
       runAfter:
         - test-metadata
       taskRef:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/build-definitions.git
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
           - name: revision
             value: main
           - name: pathInRepo
-            value: task/eaas-provision-space/0.1/eaas-provision-space.yaml
+            value: tasks/sealights/sealights-get-refs/0.1/sealights-get-refs.yaml
       params:
-        - name: ownerName
-          value: $(context.pipelineRun.name)
-        - name: ownerUid
-          value: $(context.pipelineRun.uid)
-    - name: provision-cluster
-      runAfter:
-        - provision-eaas-space
-      taskSpec:
-        results:
-          - name: clusterName
-            value: "$(steps.create-cluster.results.clusterName)"
-        volumes:
-          - name: credentials
-            emptyDir: {}
-        steps:
-          - name: get-supported-versions
-            ref:
-              resolver: git
-              params:
-                - name: url
-                  value: https://github.com/konflux-ci/build-definitions.git
-                - name: revision
-                  value: main
-                - name: pathInRepo
-                  value: stepactions/eaas-get-supported-ephemeral-cluster-versions/0.1/eaas-get-supported-ephemeral-cluster-versions.yaml
-            params:
-              - name: eaasSpaceSecretRef
-                value: $(tasks.provision-eaas-space.results.secretRef)
-          - name: pick-version
-            ref:
-              resolver: git
-              params:
-                - name: url
-                  value: https://github.com/konflux-ci/build-definitions.git
-                - name: revision
-                  value: main
-                - name: pathInRepo
-                  value: stepactions/eaas-get-latest-openshift-version-by-prefix/0.1/eaas-get-latest-openshift-version-by-prefix.yaml
-            params:
-              - name: prefix
-                value: "$(steps.get-supported-versions.results.versions[0])."
-          - name: create-cluster
-            ref:
-              resolver: git
-              params:
-                - name: url
-                  value: https://github.com/konflux-ci/build-definitions.git
-                - name: revision
-                  value: main
-                - name: pathInRepo
-                  value: stepactions/eaas-create-ephemeral-cluster-hypershift-aws/0.1/eaas-create-ephemeral-cluster-hypershift-aws.yaml
-            params:
-              - name: eaasSpaceSecretRef
-                value: $(tasks.provision-eaas-space.results.secretRef)
-              - name: version
-                value: "$(steps.pick-version.results.version)"
-              - name: instanceType
-                value: "m5.large"
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
     - name: deploy
       runAfter:
-        - provision-cluster
+        - sealights-get-refs
       taskSpec:
-        volumes:
-          - name: credentials
-            emptyDir: {}
         results:
           - name: BASE_URL
             description: The base URL of the deployed service
-        params:
-          - name: deployment-file
-            type: string
-            description: Path to the deployment YAML file
-          - name: image
-            type: string
-            description: Image for the deployment container
-          - name: git-url
-            type: string
-            description: git repo
-          - name: git-branch
-            type: string
-            description: git branch
         steps:
-          - name: get-kubeconfig
-            ref:
-              resolver: git
-              params:
-                - name: url
-                  value: https://github.com/konflux-ci/build-definitions.git
-                - name: revision
-                  value: main
-                - name: pathInRepo
-                  value: stepactions/eaas-get-ephemeral-cluster-credentials/0.1/eaas-get-ephemeral-cluster-credentials.yaml
-            params:
-              - name: eaasSpaceSecretRef
-                value: $(tasks.provision-eaas-space.results.secretRef)
-              - name: clusterName
-                value: "$(tasks.provision-cluster.results.clusterName)"
-              - name: credentials
-                value: credentials
           - name: apply-deployment
-            image: docker.io/bitnami/kubectl:latest
-            volumeMounts:
-              - name: credentials
-                mountPath: /credentials
+            image: registry.redhat.io/openshift4/ose-cli:v4.15
             workingDir: /workspace
             env:
-              - name: JOB_SPEC
-                value: $(tasks.test-metadata.results.job-spec)
-              - name: KUBECONFIG
-                value: "/credentials/$(steps.get-kubeconfig.results.kubeconfig)"
+              - name: COMPONENT_IMAGE
+                value: "$(tasks.sealights-get-refs.results.container-image)"
+              - name: OC_LOGIN_COMMAND
+                valueFrom:
+                  secretKeyRef:
+                    name: integration-pipeline-credentials
+                    key: oc-login-command
+              - name: SEALIGHTS_IMAGE_PULL_SECRET
+                valueFrom:
+                  secretKeyRef:
+                    name: imagerepository-for-slpython-todo-todo-list-app-sealights-image-pull
+                    key: .dockerconfigjson
             script: |
               #!/bin/sh
               set -eux
-              
-              export IMAGE="$(tasks.test-metadata.results.container-image)"
 
-              if [ "$(tasks.test-metadata.results.source-repo-branch)" = "refs/heads/main" ]; then
-                git clone "$(tasks.test-metadata.results.git-url)"
-              else
-                git clone "$(tasks.test-metadata.results.git-url)" -b "$(tasks.test-metadata.results.source-repo-branch)"
+              yum install git -y
+
+              BRANCH_NAME="$(tasks.test-metadata.results.target-repo-branch)"
+              if [[ "$(tasks.test-metadata.results.test-event-type)" == "pull_request" ]]; then
+                BRANCH_NAME="$(tasks.test-metadata.results.source-repo-branch)"
               fi
-              cd todo-list-app
+              git clone "$(tasks.test-metadata.results.git-url)" -b $BRANCH_NAME .
 
-              # Replace placeholders in the deployment manifest with actual values
-              sed -i "s|\${IMAGE}|$IMAGE|g" $(params.deployment-file)
+              eval $OC_LOGIN_COMMAND
+              
+              NS="todo-app-$(date +%s)"
+              oc new-project $NS
+
+              # Create the pull secret for pulling private instrumented container image
+              echo $SEALIGHTS_IMAGE_PULL_SECRET > pull-secret.json
+              oc create secret docker-registry sealights-pull-secret --from-file=.dockerconfigjson=pull-secret.json -n $NS
+              oc secrets link default sealights-pull-secret --for=pull -n $NS
 
               # Apply & expose the deployment
-              kubectl apply -f $(params.deployment-file)
-              kubectl expose deployment todo-app --type=ClusterIP --name=todo-list-app-service
+              sed -i "s|\${IMAGE}|$COMPONENT_IMAGE|g" $(params.deployment-file)
+              oc apply -f $(params.deployment-file) -n $NS
+              oc expose deployment todo-app --type=ClusterIP --name=todo-list-app-service -n $NS
 
               # Create an OpenShift route
-              cat <<EOF | kubectl apply -f -
+              cat <<EOF | oc apply -n $NS -f -
               apiVersion: route.openshift.io/v1
               kind: Route
               metadata:
@@ -190,56 +113,36 @@ spec:
               # Wait for the route hostname to be available
               export ROUTE_HOST=""
               while [ -z "$ROUTE_HOST" ]; do
-                ROUTE_HOST=$(kubectl get route todo-list-app-route -o jsonpath='{.spec.host}')
+                ROUTE_HOST=$(oc get route todo-list-app-route -o jsonpath='{.spec.host}')
                 sleep 10
               done
+
+              oc wait --for=condition=ready pod -l app=todo-app -n $NS --timeout=5m
 
               export BASE_URL="http://${ROUTE_HOST}"
               echo "Application exposed at ${BASE_URL}"
               echo -n "${BASE_URL}" > /tekton/results/BASE_URL
-      params:
-        - name: deployment-file
-          value: "$(params.deployment-file)"
-        - name: image
-          value: "$(tasks.test-metadata.results.container-image)"
-        - name: git-url
-          value: "$(tasks.test-metadata.results.git-url)"
-        - name: git-branch
-          value: "$(tasks.test-metadata.results.source-repo-branch)"
     - name: run-robot-tests
       runAfter:
         - deploy
       taskSpec:
-        volumes:
-          - name: credentials
-            emptyDir: {}
         steps:
-          - name: get-kubeconfig
-            ref:
-              resolver: git
-              params:
-                - name: url
-                  value: https://github.com/konflux-ci/build-definitions.git
-                - name: revision
-                  value: main
-                - name: pathInRepo
-                  value: stepactions/eaas-get-ephemeral-cluster-credentials/0.1/eaas-get-ephemeral-cluster-credentials.yaml
-            params:
-              - name: eaasSpaceSecretRef
-                value: $(tasks.provision-eaas-space.results.secretRef)
-              - name: clusterName
-                value: "$(tasks.provision-cluster.results.clusterName)"
-              - name: credentials
-                value: credentials
           - name: run-robot-tests
             image: python:3.9-slim
-            volumeMounts:
-              - name: credentials
-                mountPath: /credentials
+            imagePullPolicy: Always
             workingDir: /workspace
             env:
               - name: BASE_URL
                 value: "$(tasks.deploy.results.BASE_URL)"
+              - name: SL_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: sealights-credentials
+                    key: token
+              - name: BUILD_SESSION_ID
+                value: $(tasks.sealights-get-refs.results.sealights-bsid)
+              - name: PYTHONPATH
+                value: "/app/sealights-integration-examples/robot-custom-integration/sl_python_robot"
             script: |
               #!/bin/sh
               set -eux
@@ -251,13 +154,20 @@ spec:
 
               # Clone test repo
               apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/
-              git clone "$(tasks.test-metadata.results.git-url)" -b "$(tasks.test-metadata.results.source-repo-branch)"
-              cd "$(tasks.test-metadata.results.git-repo)"
+              BRANCH_NAME="$(tasks.test-metadata.results.target-repo-branch)"
+              if [[ "$(tasks.test-metadata.results.test-event-type)" == "pull_request" ]]; then
+                BRANCH_NAME="$(tasks.test-metadata.results.source-repo-branch)"
+              fi
+              git clone "$(tasks.test-metadata.results.git-url)" -b $BRANCH_NAME .
               
               # Install test dependencies
               pip install --no-cache-dir -r requirements.txt
               pip install --no-cache-dir -r robot_requirements.txt              
               pip install opentelemetry-exporter-otlp-proto-grpc
 
+              # Install repo holding sl-python listener script (SLListener.py).
+              git clone https://github.com/Sealights/sealights-integration-examples.git
+              pip install sealights-integration-examples/robot-custom-integration/.
+
               # Run robot tests
-              robot -v BASE_URL:"$BASE_URL" tests/integration_tests.robot
+              robot --listener sealights-integration-examples/robot-custom-integration/sl_python_robot/SLListener.py:"$SL_TOKEN":"$BUILD_SESSION_ID":Robot_Tests -v BASE_URL:"$BASE_URL" tests/integration_tests.robot
