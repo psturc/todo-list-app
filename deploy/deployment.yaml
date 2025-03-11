@@ -27,6 +27,3 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "1"
-          securityContext:
-            runAsUser: 1000
-            runAsGroup: 1000
