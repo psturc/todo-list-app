@@ -185,7 +185,7 @@ spec:
         - name: name
           value: sealights-python-oci-ta
         - name: bundle
-          value: quay.io/konflux-ci/tekton-catalog/task-sealights-python-oci-ta:0.1@sha256:734e93d5924a756d6602f12f37c74ce58750d8a297beac4b4302c615d160fa63
+          value: quay.io/konflux-ci/tekton-catalog/task-sealights-python-oci-ta:0.1@sha256:1e7a1102c3ae86e11f9d4d6c9569a02613a383fa629f54ef3f05189200586151
         - name: kind
           value: task
         resolver: bundles
@@ -254,7 +254,7 @@ spec:
         value:
         - $(params.build-args[*])
         - "BSID=$(tasks.sealights-python-instrumentation.results.sealights-bsid)"
-        - "AGENT_VERSION=2.2.5"
+        - "AGENT_VERSION=$(tasks.sealights-python-instrumentation.results.sealights-agent-version)"
       - name: BUILD_ARGS_FILE
         value: $(params.build-args-file)
       - name: SOURCE_ARTIFACT
