@@ -7,10 +7,12 @@ WORKDIR /app
 # Copy application files
 COPY . /app
 
+USER root
 # # Install dependencies
 RUN chmod +x /app/app.py
 RUN chown 1000:1000 /app/app.py
 RUN chown 1000:1000 /app/
+USER default
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir -r robot_requirements.txt
 
