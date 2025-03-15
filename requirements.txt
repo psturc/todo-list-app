@@ -1,4 +1,4 @@
-Flask==2.3.2            # The Flask framework for your app
+Flask==2.3.3            # The Flask framework for your app
 pytest==7.4.2           # The pytest framework for running unit tests
 pytest-flask==1.2.0     # pytest plugin for Flask integration
 Werkzeug==2.3.7
