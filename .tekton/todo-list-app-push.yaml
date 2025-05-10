@@ -175,8 +175,28 @@ spec:
       - name: basic-auth
         workspace: git-auth
     - name: sealights-python-instrumentation
+      params:
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+      - name: component
+        value: python-todo-list-app
+      - name: branch
+        value: '{{ source_branch }}'
+      - name: revision
+        value: '{{ revision }}'
+      - name: repository-url
+        value: '{{ repo_url }}'
+      - name: pull-request-number
+        value: '{{ pull_request_number }}'
+      - name: exclude
+        value:
+        - ./lib/*
+        - ./sealights/*
+        - ./tests/*
+      - name: workspace-path
+        value: .
       runAfter:
-        - clone-repository
+      - clone-repository
       taskRef:
         params:
         - name: name
@@ -186,23 +206,6 @@ spec:
         - name: kind
           value: task
         resolver: bundles
-      params:
-        - name: SOURCE_ARTIFACT
-          value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
-        - name: component
-          value: 'python-todo-list-app'
-        - name: branch
-          value: '{{ source_branch }}'
-        - name: revision
-          value: '{{ revision }}'
-        - name: repository-url
-          value: '{{ repo_url }}'
-        - name: pull-request-number
-          value: '{{ pull_request_number }}'
-        - name: exclude
-          value: ["./lib/*","./sealights/*","./tests/*"]
-        - name: workspace-path
-          value: "."
     - name: prefetch-dependencies
       params:
       - name: input
@@ -273,7 +276,7 @@ spec:
     - name: build-sealights-container
       params:
       - name: ADDITIONAL_SECRET
-        value: sealights-credentials 
+        value: sealights-credentials
       - name: IMAGE
         value: $(params.sealights-output-image)
       - name: DOCKERFILE
@@ -285,14 +288,14 @@ spec:
       - name: PREFETCH_INPUT
         value: $(params.prefetch-input)
       - name: IMAGE_EXPIRES_AFTER
-        value: "1d"
+        value: 1d
       - name: COMMIT_SHA
         value: $(tasks.clone-repository.results.commit)
       - name: BUILD_ARGS
         value:
         - $(params.build-args[*])
-        - "BSID=$(tasks.sealights-python-instrumentation.results.sealights-bsid)"
-        - "AGENT_VERSION=2.2.5"
+        - BSID=$(tasks.sealights-python-instrumentation.results.sealights-bsid)
+        - AGENT_VERSION=2.2.5
       - name: BUILD_ARGS_FILE
         value: $(params.build-args-file)
       - name: SOURCE_ARTIFACT
@@ -664,7 +667,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-todo-list-app
   workspaces:
   - name: git-auth
     secret:
